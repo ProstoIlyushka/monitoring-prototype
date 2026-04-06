@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/home/prostoilyushka/monitoring-prototype/server-drogon/build",
+  "command": "/usr/bin/g++ -DHAS_YAML_CPP -isystem /usr/include/jsoncpp -g -std=gnu++17 -o CMakeFiles/monitoring-server.dir/main.cpp.o -c /home/prostoilyushka/monitoring-prototype/server-drogon/main.cpp",
+  "file": "/home/prostoilyushka/monitoring-prototype/server-drogon/main.cpp",
+  "output": "CMakeFiles/monitoring-server.dir/main.cpp.o"
+}
+]

@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: monitoring-postgres
+    environment:
+      POSTGRES_DB: monitoring
+      POSTGRES_USER: admin
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db:/docker-entrypoint-initdb.d
+    networks:
+      - monitoring-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U admin"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  server:
+    build: ./server-drogon
+    container_name: monitoring-server
+    ports:
+      - "8080:8080"      # HTTP для дашборда (localhost)
+      - "8443:8443"      # HTTPS для агентов
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: monitoring
+      DB_USER: admin
+      DB_PASSWORD: secret
+    networks:
+      - monitoring-network
+
+volumes:
+  postgres_data:
+
+networks:
+  monitoring-network:
+    driver: bridge

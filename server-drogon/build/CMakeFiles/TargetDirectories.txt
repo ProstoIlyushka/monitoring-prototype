@@ -1,0 +1,3 @@
+/home/prostoilyushka/monitoring-prototype/server-drogon/build/CMakeFiles/monitoring-server.dir
+/home/prostoilyushka/monitoring-prototype/server-drogon/build/CMakeFiles/edit_cache.dir
+/home/prostoilyushka/monitoring-prototype/server-drogon/build/CMakeFiles/rebuild_cache.dir
