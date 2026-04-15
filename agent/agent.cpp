@@ -6,10 +6,9 @@
 #include <curl/curl.h>
 #include <cstdio>
 
-// Адрес сервера (можно изменить при необходимости)
-const std::string SERVER_URL = "http://localhost:8080/api/metrics";
+// Отправляем на HTTPS-порт nginx (8443), а не напрямую на Drogon
+const std::string SERVER_URL = "https://localhost:8443/api/metrics";
 
-// Чтение CPU из /proc/stat
 double getCpuUsage() {
     static unsigned long long prevTotal = 0;
     static unsigned long long prevIdle = 0;
@@ -38,7 +37,6 @@ double getCpuUsage() {
     return usage;
 }
 
-// Чтение памяти из /proc/meminfo
 double getMemoryUsage() {
     std::ifstream file("/proc/meminfo");
     if (!file.is_open()) return 0;
@@ -59,7 +57,6 @@ double getMemoryUsage() {
     return 100.0 * (1.0 - (double)available / total);
 }
 
-// Отправка метрик на сервер
 void sendMetrics(double cpu, double memory, const std::string& api_key) {
     CURL* curl = curl_easy_init();
     if (!curl) return;
@@ -76,15 +73,14 @@ void sendMetrics(double cpu, double memory, const std::string& api_key) {
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json);
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
     curl_easy_setopt(curl, CURLOPT_TIMEOUT, 10L);
-    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);  // для самоподписанного сертификата
+    
+    // Для самоподписанного сертификата nginx
+    curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0L);
     curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, 0L);
     
     CURLcode res = curl_easy_perform(curl);
     if (res != CURLE_OK) {
         std::cerr << "Failed to send: " << curl_easy_strerror(res) << std::endl;
-    } else {
-        // Успешно отправлено — выводим только метрики для краткости
-        // std::cout << "Sent: " << json << std::endl;
     }
     
     curl_slist_free_all(headers);
@@ -92,15 +88,9 @@ void sendMetrics(double cpu, double memory, const std::string& api_key) {
 }
 
 int main(int argc, char* argv[]) {
-    // Проверяем аргументы командной строки
     if (argc < 2) {
         std::cerr << "Usage: " << argv[0] << " <API_KEY>" << std::endl;
-        std::cerr << "Example: " << argv[0] << " simple123" << std::endl;
-        std::cerr << std::endl;
-        std::cerr << "To register a new agent, use:" << std::endl;
-        std::cerr << "  curl -X POST http://localhost:8080/api/agents/register \\" << std::endl;
-        std::cerr << "    -H 'Content-Type: application/json' \\" << std::endl;
-        std::cerr << "    -d '{\"name\": \"MyServer\"}'" << std::endl;
+        std::cerr << "Example: " << argv[0] << " a1b2c3d4e5f6..." << std::endl;
         return 1;
     }
     
@@ -118,7 +108,6 @@ int main(int argc, char* argv[]) {
         double cpu = getCpuUsage();
         double memory = getMemoryUsage();
         
-        // Выводим каждую 10-ю метрику для краткости
         if (count % 10 == 0) {
             std::cout << "CPU: " << cpu << "% | Memory: " << memory << "%" << std::endl;
         }

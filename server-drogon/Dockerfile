@@ -12,18 +12,14 @@ RUN apt-get update && apt-get install -y \
     libsqlite3-dev \
     libmariadb-dev \
     libdrogon-dev \
-    openssl \
     cmake \
     make \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Копируем исходники
 COPY . /app
-
 WORKDIR /app
 
-# Сборка
 RUN rm -rf build && \
     mkdir build && \
     cd build && \
@@ -32,5 +28,4 @@ RUN rm -rf build && \
 
 WORKDIR /app/build
 EXPOSE 8080
-EXPOSE 8443
 CMD ["./monitoring-server"]
