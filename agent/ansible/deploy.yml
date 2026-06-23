@@ -1,0 +1,51 @@
+---
+- name: Deploy Monitoring Agent
+  hosts: monitoring_servers
+  become: yes
+  vars_files:
+    - vars/main.yml
+
+  tasks:
+    - name: Create temporary directory
+      file:
+        path: /tmp/monitoring-agent
+        state: directory
+        mode: 0755
+
+    - name: Copy deb package to server
+      copy:
+        src: ../monitoring-agent.deb
+        dest: /tmp/monitoring-agent/monitoring-agent.deb
+        mode: 0644
+
+    - name: Install monitoring agent
+      apt:
+        deb: /tmp/monitoring-agent/monitoring-agent.deb
+        state: present
+
+    - name: Configure API_KEY
+      lineinfile:
+        path: /etc/monitoring-agent/config
+        regexp: '^#?API_KEY='
+        line: "API_KEY={{ agent_api_key }}"
+        create: yes
+        mode: 0600
+      notify:
+        - restart monitoring-agent
+
+    - name: Ensure agent is running
+      systemd:
+        name: monitoring-agent
+        state: started
+        enabled: yes
+
+    - name: Clean up
+      file:
+        path: /tmp/monitoring-agent
+        state: absent
+
+  handlers:
+    - name: restart monitoring-agent
+      systemd:
+        name: monitoring-agent
+        state: restarted

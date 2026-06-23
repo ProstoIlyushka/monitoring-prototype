@@ -72,9 +72,16 @@
     let currentAgentId = null;
     let currentMetric = 'cpu';
     
-    function formatTime(timestampMs) {
+    // Единая функция форматирования даты и времени
+    function formatDateTime(timestampMs) {
         const date = new Date(timestampMs);
-        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        return date.toLocaleString([], { 
+            day: '2-digit', 
+            month: '2-digit', 
+            hour: '2-digit', 
+            minute: '2-digit',
+            second: '2-digit'
+        });
     }
     
     // Загрузка списка агентов и обновление статуса
@@ -86,10 +93,8 @@
             const select = document.getElementById('agentSelect');
             const currentValue = select.value;
             
-            // Запоминаем текущий выбранный ID
             const currentSelectedId = currentValue ? parseInt(currentValue) : null;
             
-            // Обновляем выпадающий список
             select.innerHTML = '';
             
             if (agents.length === 0) {
@@ -107,7 +112,6 @@
                 select.appendChild(option);
             }
             
-            // Восстанавливаем выбор (если агент ещё существует)
             if (currentSelectedId && agents.find(a => a.id === currentSelectedId)) {
                 select.value = currentSelectedId;
                 currentAgentId = currentSelectedId;
@@ -116,7 +120,6 @@
                 currentAgentId = agents[0].id;
             }
             
-            // Обновляем отображение статуса выбранного агента
             const selectedAgent = agents.find(a => a.id === currentAgentId);
             if (selectedAgent) {
                 updateStatusDisplay(selectedAgent);
@@ -129,7 +132,6 @@
         }
     }
     
-    // Отображение статуса (без лишних запросов)
     function updateStatusDisplay(agent) {
         if (!agent) {
             document.getElementById('agentStatus').innerHTML = '<span class="status unknown">● НЕТ ДАННЫХ</span>';
@@ -147,7 +149,7 @@
             : '<span class="status offline">● OFFLINE</span>';
         
         if (lastSeen > 0) {
-            document.getElementById('lastSeen').innerHTML = `последний раз: ${formatTime(lastSeen)}`;
+            document.getElementById('lastSeen').innerHTML = `последний раз: ${formatDateTime(lastSeen)}`;
         } else {
             document.getElementById('lastSeen').innerHTML = 'нет данных';
         }
@@ -164,11 +166,9 @@
             const timestamps = [];
             const values = [];
             
-            // Фильтруем по agent_name (пока данные всех агентов)
-            // TODO: когда API будет поддерживать /api/metrics/{agentId}/history, заменить
             for (const item of allData) {
                 if (item.metrics && item.metrics[metric] !== undefined) {
-                    timestamps.push(formatTime(item.timestamp));
+                    timestamps.push(formatDateTime(item.timestamp));
                     values.push(item.metrics[metric]);
                 }
             }
@@ -209,36 +209,111 @@
         }
     }
     
+    // Загрузка сохранённых прогнозов
+    async function loadStoredForecast(agentId, metric) {
+        try {
+            const response = await fetch(`/api/forecast/stored/${agentId}/${metric}`);
+            if (!response.ok) return { timestamps: [], values: [] };
+            const data = await response.json();
+            
+            // Фильтруем прогнозы, которые НЕ старше последней метрики
+            // (оставляем только те, что в будущем)
+            const now = Date.now();
+            const filteredTimestamps = [];
+            const filteredValues = [];
+            
+            for (let i = 0; i < (data.timestamps || []).length; i++) {
+                // Если время прогноза больше текущего времени + 5 минут (запас)
+                if (data.timestamps[i] > now + 5 * 60 * 1000) {
+                    filteredTimestamps.push(formatDateTime(data.timestamps[i]));
+                    filteredValues.push(data.values[i]);
+                }
+            }
+            
+            return { timestamps: filteredTimestamps, values: filteredValues };
+        } catch (error) {
+            console.error('Error loading stored forecast:', error);
+            return { timestamps: [], values: [] };
+        }
+    }
+    
     // Основная функция обновления дашборда
     async function updateDashboard() {
-        // 1. Обновляем список агентов и статус (это один запрос)
+        // Проверяем, есть ли сессия
+        try {
+            const testResponse = await fetch('/api/agents');
+            if (testResponse.status === 401) {
+                window.location.href = '/login.html';
+                return;
+            }
+        } catch (e) {
+            window.location.href = '/login.html';
+            return;
+        }
+
         const agents = await loadAgentsAndUpdateStatus();
         
-        // 2. Получаем текущие значения
+        const agentId = parseInt(document.getElementById('agentSelect').value);
         const metric = document.getElementById('metricSelect').value;
         currentMetric = metric;
+        currentAgentId = agentId;
         
-        // 3. Загружаем историю метрик
+        if (!agentId) return;
+        
+        // Загружаем историю и прогноз
         const { timestamps, values } = await loadHistory(metric);
+        const forecast = await loadStoredForecast(agentId, metric);
         
-        // 4. Обновляем график
         if (chart) chart.destroy();
         
         const ctx = document.getElementById('metricsChart').getContext('2d');
+        
+        // Подготовка данных для графика с соединением
+        // Используем время из истории для соединения
+        const allLabels = [...timestamps];
+
+        // Если есть прогноз, добавляем его временные метки (начиная со второй)
+        if (forecast.timestamps.length > 0) {
+            // Добавляем все метки прогноза, кроме первой (она дублирует последнюю историческую)
+            allLabels.push(...forecast.timestamps.slice(1));
+        }
+
+        // История: все точки + null для прогноза
+        const historyData = [...values, ...Array(forecast.values.length).fill(null)];
+
+        // Прогноз: null для истории (кроме последней точки), затем прогноз
+        const forecastData = [
+            ...Array(Math.max(0, values.length - 1)).fill(null),
+            values.length > 0 ? values[values.length - 1] : null,
+            ...forecast.values
+        ];
+        
         chart = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: timestamps,
-                datasets: [{
-                    label: getMetricLabel(metric),
-                    data: values,
-                    borderColor: getMetricColor(metric),
-                    backgroundColor: 'rgba(0,0,0,0)',
-                    borderWidth: 2,
-                    pointRadius: 2,
-                    pointHoverRadius: 5,
-                    tension: 0.1
-                }]
+                labels: allLabels,
+                datasets: [
+                    {
+                        label: getMetricLabel(metric) + ' (история)',
+                        data: historyData,
+                        borderColor: getMetricColor(metric),
+                        backgroundColor: 'rgba(0,0,0,0)',
+                        borderWidth: 2,
+                        pointRadius: 2,
+                        pointHoverRadius: 5,
+                        tension: 0.1
+                    },
+                    {
+                        label: getMetricLabel(metric) + ' (прогноз)',
+                        data: forecastData,
+                        borderColor: '#ff9800',
+                        backgroundColor: 'rgba(255,152,0,0.1)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        pointRadius: 2,
+                        tension: 0.1
+                    }
+                ]
             },
             options: {
                 responsive: true,
@@ -254,7 +329,6 @@
             }
         });
         
-        // 5. Загружаем оповещения
         await loadAlerts();
     }
     

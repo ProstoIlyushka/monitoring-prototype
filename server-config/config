@@ -1,0 +1,6 @@
+# SMTP Settings for email alerts
+SMTP_HOST=smtp.yandex.com
+SMTP_PORT=465
+SMTP_FROM=your-mail@yandex.ru
+SMTP_PASSWORD=your-password
+SMTP_TO=admin-mail@yandex.ru

@@ -1,0 +1,19 @@
+[Unit]
+Description=Monitoring Agent for Linux Servers
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/var/lib/monitoring-agent
+ExecStart=/usr/local/bin/monitoring-agent
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+MemoryMax=100M
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target

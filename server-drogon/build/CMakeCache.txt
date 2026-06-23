@@ -490,7 +490,7 @@ FIND_PACKAGE_MESSAGE_DETAILS_Jsoncpp:INTERNAL=[/usr/include/jsoncpp][/usr/lib/x8
 //Details about finding MySQL
 FIND_PACKAGE_MESSAGE_DETAILS_MySQL:INTERNAL=[/usr/lib/x86_64-linux-gnu/libmariadbclient.so][/usr/include/mariadb][v()]
 //Details about finding PostgreSQL
-FIND_PACKAGE_MESSAGE_DETAILS_PostgreSQL:INTERNAL=[/usr/lib/x86_64-linux-gnu/libpq.so][/usr/include/postgresql][c ][v16.13()]
+FIND_PACKAGE_MESSAGE_DETAILS_PostgreSQL:INTERNAL=[/usr/lib/x86_64-linux-gnu/libpq.so][/usr/include/postgresql][c ][v16.14()]
 //Details about finding SQLite3
 FIND_PACKAGE_MESSAGE_DETAILS_SQLite3:INTERNAL=[/usr/lib/x86_64-linux-gnu/libsqlite3.so][/usr/include][v()]
 //Details about finding Threads

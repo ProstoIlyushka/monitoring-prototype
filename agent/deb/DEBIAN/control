@@ -1,0 +1,9 @@
+Package: monitoring-agent
+Version: 1.0.0
+Section: utils
+Priority: optional
+Architecture: amd64
+Depends: libcurl4, systemd
+Maintainer: Your Name <email@example.com>
+Description: Monitoring agent for Linux servers
+ Collects system metrics and sends to central monitoring server.

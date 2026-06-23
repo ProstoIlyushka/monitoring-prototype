@@ -1,0 +1,26 @@
+#!/bin/bash
+set -e
+
+# Создаём директории
+mkdir -p /var/lib/monitoring-agent
+mkdir -p /var/log/monitoring-agent
+chmod 755 /var/lib/monitoring-agent
+chmod 755 /var/log/monitoring-agent
+
+# Если конфига нет — создаём шаблон
+if [ ! -f /etc/monitoring-agent/config ]; then
+    mkdir -p /etc/monitoring-agent
+    echo "# API_KEY=your-api-key-here" > /etc/monitoring-agent/config
+    chmod 600 /etc/monitoring-agent/config
+fi
+
+# Запускаем сервис
+systemctl daemon-reload
+systemctl enable monitoring-agent || true
+systemctl start monitoring-agent || true
+
+echo ""
+echo "✅ Monitoring agent installed successfully."
+echo "📝 Please edit /etc/monitoring-agent/config and set API_KEY."
+echo "🔄 Then run: sudo systemctl restart monitoring-agent"
+echo ""
