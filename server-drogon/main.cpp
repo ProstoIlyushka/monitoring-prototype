@@ -903,8 +903,8 @@ private:
             std::cerr << "❌ Failed to send email notification (curl exit code: " << ret << ")" << std::endl;
         } else {
             std::cout << "✅ Email notification sent to " << to << std::endl;
-        }
-    }*/
+        }*/
+    }
 };
 
 // ============================================================
