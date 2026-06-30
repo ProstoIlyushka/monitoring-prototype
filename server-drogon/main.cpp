@@ -48,33 +48,157 @@ bool connectRedis() {
     return true;
 }
 
+bool ensureRedisConnected() {
+    std::cout << "🔍 [DEBUG] ensureRedisConnected called" << std::endl;
+    std::cout.flush();
+    
+    // Проверяем, есть ли контекст
+    if (redisCtx == nullptr) {
+        std::cout << "🔍 [DEBUG] redisCtx is NULL, connecting..." << std::endl;
+        std::cout.flush();
+        return connectRedis();
+    }
+    
+    std::cout << "🔍 [DEBUG] redisCtx exists, checking err: " << redisCtx->err << std::endl;
+    std::cout.flush();
+    
+    // Проверяем, есть ли ошибка в контексте
+    if (redisCtx->err != 0) {
+        std::cerr << "⚠️ Redis connection error: " << redisCtx->errstr << ", reconnecting..." << std::endl;
+        redisFree(redisCtx);
+        redisCtx = nullptr;
+        return connectRedis();
+    }
+    
+    std::cout << "🔍 [DEBUG] redisCtx seems valid, trying PING..." << std::endl;
+    std::cout.flush();
+    
+    // Проверяем соединение через PING
+    redisReply* reply = (redisReply*)redisCommand(redisCtx, "PING");
+    
+    if (reply == nullptr) {
+        std::cerr << "⚠️ Redis PING returned NULL, reconnecting..." << std::endl;
+        redisFree(redisCtx);
+        redisCtx = nullptr;
+        return connectRedis();
+    }
+    
+    std::cout << "🔍 [DEBUG] PING reply->type = " << reply->type << std::endl;
+    std::cout.flush();
+    
+    if (reply->type == REDIS_REPLY_ERROR) {
+        std::cerr << "⚠️ Redis PING error: " << reply->str << ", reconnecting..." << std::endl;
+        freeReplyObject(reply);
+        redisFree(redisCtx);
+        redisCtx = nullptr;
+        return connectRedis();
+    }
+    
+    std::cout << "🔍 [DEBUG] PING successful (reply->type = " << reply->type << ")" << std::endl;
+    std::cout.flush();
+    
+    freeReplyObject(reply);
+    return true;
+}
+
 std::string getCached(const std::string& key) {
-    if (!redisCtx) return "";
+    std::cout << "🔍 [DEBUG] getCached: key = " << key << std::endl;
+    std::cout.flush();
+    
+    if (!ensureRedisConnected()) {
+        std::cerr << "❌ getCached: Redis not connected" << std::endl;
+        return "";
+    }
+    
+    std::cout << "🔍 [DEBUG] getCached: redisCtx is valid, calling redisCommand..." << std::endl;
+    std::cout.flush();
     
     redisReply* reply = (redisReply*)redisCommand(redisCtx, "GET %s", key.c_str());
-    if (reply == nullptr) return "";
     
-    std::string result;
-    if (reply->type == REDIS_REPLY_STRING) {
-        result = std::string(reply->str, reply->len);
+    if (reply == nullptr) {
+        std::cerr << "❌ getCached: redisCommand returned NULL" << std::endl;
+        return "";
     }
+    
+    std::cout << "🔍 [DEBUG] getCached: reply->type = " << reply->type << std::endl;
+    std::cout.flush();
+    
+    if (reply->type == REDIS_REPLY_STRING) {
+        std::string result = std::string(reply->str, reply->len);
+        std::cout << "🔍 [DEBUG] getCached: value = '" << result << "'" << std::endl;
+        freeReplyObject(reply);
+        return result;
+    } else if (reply->type == REDIS_REPLY_NIL) {
+        std::cout << "🔍 [DEBUG] getCached: value is NIL (empty)" << std::endl;
+        freeReplyObject(reply);
+        return "";
+    } else if (reply->type == REDIS_REPLY_ERROR) {
+        std::cout << "🚨 [DEBUG] REDIS ERROR: " << reply->str << std::endl;  // <-- добавить эту строку
+        std::cout << "🔍 [DEBUG] getCached: value is ERROR" << std::endl;
+        freeReplyObject(reply);
+        return "";
+    } else if (reply->type == REDIS_REPLY_INTEGER) {
+    std::cout << "🔍 [DEBUG] getCached: value is INTEGER: " << reply->integer << std::endl;
     freeReplyObject(reply);
-    return result;
+    return "";
+    } else {
+        std::cout << "🔍 [DEBUG] getCached: unexpected type = " << reply->type << std::endl;
+        std::cout << "🚨 [DEBUG] REDIS ERROR: " << reply->str << std::endl;  // <-- добавить эту строку
+        freeReplyObject(reply);
+        return "";
+    }
 }
 
 void setCached(const std::string& key, const std::string& value, int ttl_seconds = 120) {
-    if (!redisCtx) return;
+    if (!ensureRedisConnected()) {
+        std::cerr << "❌ setCached: Redis not connected" << std::endl;
+        return;
+    }
     
-    redisReply* reply = (redisReply*)redisCommand(redisCtx, "SETEX %s %d %s", key.c_str(), ttl_seconds, value.c_str());
+    redisReply* reply = (redisReply*)redisCommand(redisCtx, "SETEX %s %d %s", 
+                                                    key.c_str(), ttl_seconds, value.c_str());
+    
+    if (reply == nullptr) {
+        std::cerr << "⚠️ setCached: redisCommand returned nullptr, reconnecting..." << std::endl;
+        if (redisCtx) {
+            redisFree(redisCtx);
+            redisCtx = nullptr;
+        }
+        if (connectRedis()) {
+            reply = (redisReply*)redisCommand(redisCtx, "SETEX %s %d %s", 
+                                              key.c_str(), ttl_seconds, value.c_str());
+        }
+    }
+    
     if (reply) freeReplyObject(reply);
 }
 
 void invalidateCache(const std::string& key) {
-    if (!redisCtx) return;
+    if (!ensureRedisConnected()) {
+        std::cerr << "❌ invalidateCache: Redis not connected" << std::endl;
+        return;
+    }
+    
+    // Если ключ заканчивается на ":", удаляем все ключи с этим префиксом
+    if (key.back() == ':') {
+        redisReply* reply = (redisReply*)redisCommand(redisCtx, "KEYS %s*", key.c_str());
+        if (reply && reply->type == REDIS_REPLY_ARRAY) {
+            for (size_t i = 0; i < reply->elements; ++i) {
+                std::string k = reply->element[i]->str;
+                redisReply* delReply = (redisReply*)redisCommand(redisCtx, "DEL %s", k.c_str());
+                if (delReply) freeReplyObject(delReply);
+                std::cout << "Cache invalidated: " << k << std::endl;
+            }
+        }
+        if (reply) freeReplyObject(reply);
+        return;
+    }
     
     redisReply* reply = (redisReply*)redisCommand(redisCtx, "DEL %s", key.c_str());
-    if (reply) freeReplyObject(reply);
-    std::cout << "Cache invalidated: " << key << std::endl;
+    if (reply) {
+        freeReplyObject(reply);
+        std::cout << "Cache invalidated: " << key << std::endl;
+    }
 }
 
 std::string generateApiKey() {
@@ -224,6 +348,15 @@ ServerConfig loadServerConfig() {
 bool checkSession(const HttpRequestPtr& req, 
                   std::function<void(const HttpResponsePtr&)>&& callback,
                   std::string& session_id) {
+    if (!ensureRedisConnected()) {
+        auto resp = HttpResponse::newHttpResponse();
+        resp->setStatusCode(k500InternalServerError);
+        resp->setBody("{\"error\": \"Redis unavailable\"}");
+        resp->setContentTypeCode(CT_APPLICATION_JSON);
+        callback(resp);
+        return false;
+    }
+    
     auto cookies = req->getCookies();
     auto it = cookies.find("session_id");
     if (it == cookies.end()) {
@@ -235,7 +368,11 @@ bool checkSession(const HttpRequestPtr& req,
     }
     
     session_id = it->second;
+
+    std::cout << "🔍 [DEBUG] checkSession called with session_id: " << session_id << std::endl;
     std::string cached = getCached("session:" + session_id);
+    std::cout << "🔍 [DEBUG] cached value: '" << cached << "'" << std::endl;
+
     if (cached.empty()) {
         auto resp = HttpResponse::newHttpResponse();
         resp->setStatusCode(k401Unauthorized);
@@ -303,7 +440,7 @@ public:
 
             auto resp = HttpResponse::newHttpResponse();
             resp->setStatusCode(k200OK);
-            resp->addHeader("Set-Cookie", "session_id=" + session_id + "; HttpOnly; Path=/; Max-Age=3600");
+            resp->addHeader("Set-Cookie", "session_id=" + session_id + "; HttpOnly; Path=/; Max-Age=3600; Secure; SameSite=Lax");
             resp->setBody("{\"status\": \"ok\"}");
             callback(resp);
         } else {
@@ -352,6 +489,9 @@ public:
     
     void getAgents(const HttpRequestPtr& req,
                 std::function<void(const HttpResponsePtr&)>&& callback) {
+        auto cookies = req->getCookies();
+        std::cout << "Cookies: " << cookies.size() << std::endl;  // ← для отладки
+        
         // Проверка сессии
         std::string session_id;
         if (!checkSession(req, std::move(callback), session_id)) {
@@ -473,7 +613,7 @@ public:
                             (*insertedCount)++;
                             
                             if (*insertedCount == totalMetrics) {
-                                invalidateCache("history:all");
+                                invalidateCache("history:");
                             }
                         },
                         [](const orm::DrogonDbException& e) {
@@ -499,18 +639,39 @@ public:
     }
     
     void getLatest(const HttpRequestPtr& req,
-                   std::function<void(const HttpResponsePtr&)>&& callback) {
+                std::function<void(const HttpResponsePtr&)>&& callback) {
         // Проверка сессии
         std::string session_id;
         if (!checkSession(req, std::move(callback), session_id)) {
-            return; 
-        } 
-
-        globalDbClient->execSqlAsync(
+            return;
+        }
+        
+        // Читаем параметр agent_id
+        auto params = req->getParameters();
+        std::string agent_filter = "";
+        if (params.find("agent_id") != params.end()) {
+            agent_filter = "AND m.agent_id = " + params["agent_id"];
+        }
+        
+        std::string cacheKey = "latest" + agent_filter;
+        std::string cachedJson = getCached(cacheKey);
+        if (!cachedJson.empty()) {
+            auto resp = HttpResponse::newHttpResponse();
+            resp->setBody(cachedJson);
+            resp->setContentTypeCode(CT_APPLICATION_JSON);
+            callback(resp);
+            return;
+        }
+        
+        std::string sql = 
             "SELECT metric_name, value, EXTRACT(EPOCH FROM timestamp) * 1000 as ts, a.name as agent_name "
             "FROM metrics m JOIN agents a ON m.agent_id = a.id "
-            "ORDER BY m.timestamp DESC LIMIT 10",
-            [callback](const orm::Result& result) {
+            "WHERE 1=1 " + agent_filter + " "
+            "ORDER BY m.timestamp DESC LIMIT 10";
+        
+        globalDbClient->execSqlAsync(
+            sql,
+            [cacheKey, callback](const orm::Result& result) {
                 Json::Value json;
                 if (!result.empty()) {
                     Json::Value metrics(Json::objectValue);
@@ -527,9 +688,13 @@ public:
                 } else {
                     json["message"] = "no data yet";
                 }
+                
+                Json::FastWriter writer;
+                setCached(cacheKey, writer.write(json), 30);
                 callback(HttpResponse::newHttpJsonResponse(json));
             },
             [callback](const orm::DrogonDbException& e) {
+                std::cerr << "DB error in getLatest: " << e.base().what() << std::endl;
                 callback(HttpResponse::newHttpResponse(k500InternalServerError, CT_TEXT_PLAIN));
             }
         );
@@ -540,12 +705,26 @@ public:
         // Проверка сессии
         std::string session_id;
         if (!checkSession(req, std::move(callback), session_id)) {
-            return; 
-        } 
-
-        std::string cacheKey = "history:all";
+            return;
+        }
         
-        // 1. Проверяем кэш
+        // Читаем параметры из запроса
+        auto params = req->getParameters();
+        int period_hours = 72;
+        std::string agent_id = "";
+        
+        if (params.find("period") != params.end()) {
+            period_hours = std::stoi(params["period"]);
+        }
+        if (params.find("agent_id") != params.end()) {
+            agent_id = params["agent_id"];
+        }
+        
+        // Кэш зависит от периода и агента
+        std::string cacheKey = "history:period:" + std::to_string(period_hours) +
+                            ":agent:" + (agent_id.empty() ? "all" : agent_id);
+        
+        // Проверяем кэш
         std::string cachedJson = getCached(cacheKey);
         if (!cachedJson.empty()) {
             auto resp = HttpResponse::newHttpResponse();
@@ -555,12 +734,22 @@ public:
             return;
         }
         
-        // 2. Нет в кэше → идём в БД
-        globalDbClient->execSqlAsync(
+        // ✅ ЗАПРОС: все данные за период (без LIMIT)
+        std::string sql = 
             "SELECT metric_name, value, EXTRACT(EPOCH FROM timestamp) * 1000 as ts, a.name as agent_name "
             "FROM metrics m JOIN agents a ON m.agent_id = a.id "
-            "ORDER BY m.timestamp DESC LIMIT 500",
+            "WHERE m.timestamp > NOW() - INTERVAL '" + std::to_string(period_hours) + " hours' ";
+        
+        if (!agent_id.empty()) {
+            sql += "AND m.agent_id = " + agent_id + " ";
+        }
+        
+        sql += "ORDER BY m.timestamp DESC";  // Новые сверху, старые снизу
+        
+        globalDbClient->execSqlAsync(
+            sql,
             [cacheKey, callback](const orm::Result& result) {
+                // Собираем данные
                 std::vector<std::tuple<double, std::string, double, std::string>> rows;
                 for (const auto& row : result) {
                     double ts = row["ts"].as<double>();
@@ -570,8 +759,7 @@ public:
                     rows.emplace_back(ts, name, value, agent);
                 }
                 
-                std::reverse(rows.begin(), rows.end());
-                
+                // Группируем по времени
                 std::map<double, Json::Value> grouped;
                 for (const auto& [ts, name, value, agent] : rows) {
                     if (!grouped.count(ts)) {
@@ -583,12 +771,12 @@ public:
                     grouped[ts]["metrics"][name] = value;
                 }
                 
+                // От старых к новым (для графика)
                 Json::Value json(Json::arrayValue);
                 for (const auto& pair : grouped) {
                     json.append(pair.second);
                 }
                 
-                // 3. Сохраняем в кэш на 120 секунд
                 Json::FastWriter writer;
                 setCached(cacheKey, writer.write(json), 120);
                 
@@ -846,27 +1034,21 @@ private:
         // 2. Вывод в консоль
         std::cout << "🚨 ALERT: " << message << std::endl;
         
-        // 3. Отправка email-уведомления (соответствие ТЗ)
-        std::string admin_email = "admin@example.com";  // можно вынести в переменную окружения
+        // 3. Отправка email-уведомления
         std::string subject = "⚠️ Monitoring Alert: " + metric_name;
-        sendEmailNotification(admin_email, subject, message);
+        sendEmailNotification(subject, message);
     }
 
-    void sendEmailNotification(const std::string& to, const std::string& subject, const std::string& body) {
-        /*// Используем настройки из глобального конфига
-        if (serverConfig.smtp_password.empty()) {
-            std::cerr << "⚠️ SMTP password not configured, email not sent" << std::endl;
-            std::cout << "📧 Would send email to " << to << ": " << subject << std::endl;
+    void sendEmailNotification(const std::string& subject, const std::string& body) {
+        std::cout << "📧 [DEBUG] sendEmailNotification called. Subject: " << subject << std::endl;
+        std::cout.flush();
+        
+        if (serverConfig.smtp_password.empty() || serverConfig.smtp_to.empty()) {
+            std::cerr << "⚠️ SMTP not configured (password or recipient missing), email not sent" << std::endl;
             return;
         }
         
-        // Экранируем тело письма для curl
-        std::string escaped_body = body;
-        std::string::size_type pos = 0;
-        while ((pos = escaped_body.find('"', pos)) != std::string::npos) {
-            escaped_body.replace(pos, 1, "\\\"");
-            pos += 2;
-        }
+        std::string to = serverConfig.smtp_to;
         
         // Формируем письмо
         std::string mail_content = 
@@ -877,33 +1059,40 @@ private:
             "\r\n"
             + body + "\r\n";
         
-        // Экранируем для передачи в командной строке
-        std::string escaped_content = mail_content;
-        pos = 0;
-        while ((pos = escaped_content.find('"', pos)) != std::string::npos) {
-            escaped_content.replace(pos, 1, "\\\"");
-            pos += 2;
+        // Создаём временный файл
+        std::string tmp_file = "/tmp/email_" + std::to_string(std::time(nullptr)) + ".txt";
+        std::ofstream file(tmp_file);
+        if (!file.is_open()) {
+            std::cerr << "❌ Failed to create temporary email file" << std::endl;
+            return;
         }
-        while ((pos = escaped_content.find('$', pos)) != std::string::npos) {
-            escaped_content.replace(pos, 1, "\\$");
-            pos += 2;
-        }
+        file << mail_content;
+        file.close();
         
-        // Отправка через curl
+        // Отправляем через curl
         std::string cmd = "curl -s --ssl-reqd "
                         "--url 'smtps://" + serverConfig.smtp_host + ":" + serverConfig.smtp_port + "' "
                         "--user '" + serverConfig.smtp_from + ":" + serverConfig.smtp_password + "' "
                         "--mail-from '" + serverConfig.smtp_from + "' "
                         "--mail-rcpt '" + to + "' "
-                        "--upload-file - <<< \"" + escaped_content + "\" 2>&1";
+                        "--upload-file " + tmp_file + " 2>&1";
+        
+        std::cout << "📧 [DEBUG] Command: " << cmd << std::endl;
+        std::cout.flush();
         
         int ret = system(cmd.c_str());
+        
+        // Удаляем временный файл
+        std::remove(tmp_file.c_str());
+        
+        std::cout << "📧 [DEBUG] curl exit code: " << ret << std::endl;
+        std::cout.flush();
         
         if (ret != 0) {
             std::cerr << "❌ Failed to send email notification (curl exit code: " << ret << ")" << std::endl;
         } else {
             std::cout << "✅ Email notification sent to " << to << std::endl;
-        }*/
+        }
     }
 };
 

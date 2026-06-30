@@ -6,35 +6,124 @@
     <title>Мониторинг Linux-серверов</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
-        h1 { color: #333; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; padding: 20px; color: #333; }
         .dashboard { max-width: 1400px; margin: 0 auto; }
-        .controls { margin: 20px 0; padding: 15px; background: white; border-radius: 8px; display: flex; gap: 15px; flex-wrap: wrap; align-items: center; }
-        .controls select, .controls button { padding: 8px 12px; font-size: 14px; }
-        .refresh-btn { background: #2196f3; color: white; border: none; cursor: pointer; border-radius: 4px; }
-        .refresh-btn:hover { background: #1976d2; }
-        .chart-container { background: white; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        canvas { max-height: 400px; }
-        .alerts-container { background: white; border-radius: 8px; padding: 20px; margin-top: 20px; }
-        .alert { padding: 10px; margin: 5px 0; border-left: 4px solid #f44336; background: #ffebee; border-radius: 4px; }
-        .status { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .status.online { background: #4caf50; color: white; }
-        .status.offline { background: #f44336; color: white; }
-        .status.unknown { background: #999; color: white; }
-        .loading { text-align: center; padding: 20px; color: #666; }
+        h1 { color: #333; margin-bottom: 20px; display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+        
+        /* KPI Cards */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 16px; margin-bottom: 20px; }
+        .kpi-card { background: white; border-radius: 12px; padding: 14px 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); border-left: 4px solid #2196f3; }
+        .kpi-card .label { font-size: 11px; text-transform: uppercase; color: #888; letter-spacing: 0.5px; }
+        .kpi-card .value { font-size: 26px; font-weight: 700; margin-top: 2px; }
+        .kpi-card .value .unit { font-size: 13px; font-weight: 400; color: #888; }
+        .kpi-card.green { border-left-color: #22c55e; }
+        .kpi-card.yellow { border-left-color: #f59e0b; }
+        .kpi-card.red { border-left-color: #ef4444; }
+        .kpi-card.blue { border-left-color: #3b82f6; }
+        .kpi-card.purple { border-left-color: #8b5cf6; }
+        
+        .controls { margin: 20px 0; padding: 15px 20px; background: white; border-radius: 12px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .controls select, .controls button { padding: 8px 14px; font-size: 14px; border-radius: 6px; border: 1px solid #ddd; background: white; color: #333; cursor: pointer; }
+        .controls select:focus, .controls button:focus { outline: none; border-color: #2196f3; }
+        .controls button { background: #2196f3; color: white; border: none; }
+        .controls button:hover { background: #1976d2; }
+        .controls .time-btn { background: #f0f0f0; color: #333; border: 1px solid #ddd; padding: 6px 14px; border-radius: 20px; font-size: 13px; cursor: pointer; transition: all 0.2s; }
+        .controls .time-btn:hover { background: #e0e0e0; }
+        .controls .time-btn.active { background: #2196f3; color: white; border-color: #2196f3; }
+        .time-group { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+        .time-group label { font-size: 13px; color: #666; margin-right: 4px; }
+        
         .agent-info { margin-left: auto; font-size: 14px; color: #666; display: flex; gap: 15px; align-items: center; }
+        .status { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+        .status.online { background: #dcfce7; color: #166534; }
+        .status.offline { background: #fee2e2; color: #991b1b; }
+        .status.unknown { background: #e5e7eb; color: #4b5563; }
         .last-update { font-size: 12px; color: #999; }
+        
+        .chart-container { background: white; border-radius: 12px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        canvas { max-height: 400px; width: 100%; }
+        
+        .alerts-container { background: white; border-radius: 12px; padding: 20px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .alerts-container h3 { margin-bottom: 12px; color: #333; display: flex; align-items: center; gap: 10px; }
+        .alert { 
+            padding: 12px 16px; 
+            margin: 6px 0; 
+            border-left: 4px solid #ef4444; 
+            background: #fef2f2; 
+            border-radius: 8px; 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            flex-wrap: wrap; 
+            gap: 8px;
+            transition: opacity 0.3s ease;
+        }
+        .alert .alert-message { flex: 1; }
+        .alert .alert-time { font-size: 12px; color: #999; }
+        .alert .alert-badge { background: #ef4444; color: white; padding: 2px 10px; border-radius: 20px; font-size: 11px; font-weight: 600; }
+        .alert-dismiss-btn {
+            background: none;
+            border: 1px solid #ddd;
+            color: #666;
+            cursor: pointer;
+            font-size: 12px;
+            padding: 4px 12px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        .alert-dismiss-btn:hover {
+            background: #e5e5e5;
+            color: #333;
+            border-color: #bbb;
+        }
+        .loading { text-align: center; padding: 20px; color: #888; }
+        .no-alerts { color: #888; padding: 12px; text-align: center; }
+        
+        @media (max-width: 768px) {
+            .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+            .controls { flex-direction: column; align-items: stretch; }
+            .agent-info { margin-left: 0; }
+            .time-group { flex-wrap: wrap; }
+        }
     </style>
 </head>
 <body>
 <div class="dashboard">
     <h1>📊 Мониторинг Linux-серверов</h1>
     
+    <!-- KPI Cards -->
+    <div class="kpi-grid" id="kpiGrid">
+        <div class="kpi-card blue" id="kpi-cpu">
+            <div class="label">CPU</div>
+            <div class="value">— <span class="unit">%</span></div>
+        </div>
+        <div class="kpi-card blue" id="kpi-ram">
+            <div class="label">RAM</div>
+            <div class="value">— <span class="unit">%</span></div>
+        </div>
+        <div class="kpi-card purple" id="kpi-load">
+            <div class="label">Load Average</div>
+            <div class="value">—</div>
+        </div>
+        <div class="kpi-card green" id="kpi-processes">
+            <div class="label">Процессы</div>
+            <div class="value">—</div>
+        </div>
+        <div class="kpi-card" id="kpi-network-rx" style="border-left-color: #22c55e;">
+            <div class="label">Network RX</div>
+            <div class="value">— <span class="unit">B/s</span></div>
+        </div>
+        <div class="kpi-card" id="kpi-network-tx" style="border-left-color: #f59e0b;">
+            <div class="label">Network TX</div>
+            <div class="value">— <span class="unit">B/s</span></div>
+        </div>
+    </div>
+    
+    <!-- Controls -->
     <div class="controls">
         <label><strong>Сервер:</strong></label>
-        <select id="agentSelect">
-            <option value="">Загрузка...</option>
-        </select>
+        <select id="agentSelect"><option value="">Загрузка...</option></select>
         
         <label><strong>Метрика:</strong></label>
         <select id="metricSelect">
@@ -47,23 +136,31 @@
             <option value="network_tx">Network TX (B/s)</option>
         </select>
         
+        <div class="time-group">
+            <label>📅</label>
+            <button class="time-btn" data-period="3600000">1 ч</button>
+            <button class="time-btn active" data-period="21600000">6 ч</button>
+            <button class="time-btn" data-period="86400000">24 ч</button>
+            <button class="time-btn" data-period="259200000">72 ч</button>
+        </div>
+        
         <button id="refreshBtn" class="refresh-btn">🔄 Обновить</button>
         
         <div class="agent-info">
-            <span id="agentStatus"></span>
+            <span id="agentStatus"><span class="status unknown">● НЕТ ДАННЫХ</span></span>
             <span id="lastSeen" class="last-update"></span>
         </div>
     </div>
     
+    <!-- Chart with Forecast -->
     <div class="chart-container">
         <canvas id="metricsChart"></canvas>
     </div>
     
+    <!-- Alerts -->
     <div class="alerts-container">
-        <h3>⚠️ Оповещения</h3>
-        <div id="alertsList">
-            <div class="loading">Загрузка...</div>
-        </div>
+        <h3>⚠️ Оповещения <span id="alertsCount" style="font-size:14px;font-weight:400;color:#888;"></span></h3>
+        <div id="alertsList"><div class="loading">Загрузка...</div></div>
     </div>
 </div>
 
@@ -71,34 +168,155 @@
     let chart = null;
     let currentAgentId = null;
     let currentMetric = 'cpu';
+    let currentPeriod = 21600000; // 6 hours by default
     
-    // Единая функция форматирования даты и времени
-    function formatDateTime(timestampMs) {
-        const date = new Date(timestampMs);
-        return date.toLocaleString([], { 
-            day: '2-digit', 
-            month: '2-digit', 
-            hour: '2-digit', 
-            minute: '2-digit',
-            second: '2-digit'
-        });
+    // ==================== Formatting ====================
+    function formatDateTime(ts) {
+        return new Date(ts).toLocaleString([], { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
     }
     
-    // Загрузка списка агентов и обновление статуса
+    function formatBytes(bytes) {
+        if (bytes < 1024) return bytes + ' B/s';
+        if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB/s';
+        return (bytes / 1048576).toFixed(1) + ' MB/s';
+    }
+    
+    function formatNumber(v) { return typeof v === 'number' ? v.toFixed(1) : '—'; }
+    
+    // ==================== Aggregation ====================
+    function aggregateData(data, intervalMs) {
+        if (!data || data.length === 0) return { timestamps: [], values: [] };
+        
+        const result = [];
+        let currentBucket = null;
+        let bucketSum = 0;
+        let bucketCount = 0;
+        
+        for (const point of data) {
+            const bucketKey = Math.floor(point.timestamp / intervalMs) * intervalMs;
+            
+            if (currentBucket === null || currentBucket !== bucketKey) {
+                if (currentBucket !== null) {
+                    result.push({
+                        timestamp: currentBucket,
+                        value: bucketSum / bucketCount
+                    });
+                }
+                currentBucket = bucketKey;
+                bucketSum = 0;
+                bucketCount = 0;
+            }
+            bucketSum += point.value;
+            bucketCount++;
+        }
+        
+        if (currentBucket !== null) {
+            result.push({
+                timestamp: currentBucket,
+                value: bucketSum / bucketCount
+            });
+        }
+        
+        return {
+            timestamps: result.map(p => formatDateTime(p.timestamp)),
+            values: result.map(p => p.value)
+        };
+    }
+    
+    function getAggregationInterval(periodMs) {
+        const intervals = {
+            3600000: 120000,    // 1 час → 2 минуты
+            21600000: 900000,   // 6 часов → 15 минут
+            86400000: 3600000,  // 24 часа → 1 час
+            259200000: 10800000 // 72 часа → 3 часа
+        };
+        return intervals[periodMs] || 60000;
+    }
+    
+    // ==================== KPI Update ====================
+    function updateKPI(metrics) {
+        const kpiMap = {
+            cpu: { id: 'kpi-cpu', label: 'CPU', value: metrics.cpu, unit: '%', threshold: 80 },
+            memory: { id: 'kpi-ram', label: 'RAM', value: metrics.ram || metrics.memory, unit: '%', threshold: 85 },
+            load_avg: { id: 'kpi-load', label: 'Load Avg', value: metrics.load_avg, unit: '' },
+            processes_running: { id: 'kpi-processes', label: 'Процессы', value: metrics.processes_running, unit: '' },
+            network_rx: { id: 'kpi-network-rx', label: 'RX', value: metrics.network_rx, unit: 'B/s' },
+            network_tx: { id: 'kpi-network-tx', label: 'TX', value: metrics.network_tx, unit: 'B/s' }
+        };
+        
+        for (const [key, cfg] of Object.entries(kpiMap)) {
+            const el = document.getElementById(cfg.id);
+            if (!el) continue;
+            const val = cfg.value;
+            const valEl = el.querySelector('.value');
+            if (val === undefined || val === null || isNaN(val)) {
+                valEl.innerHTML = '— <span class="unit">' + cfg.unit + '</span>';
+                el.className = 'kpi-card blue';
+                continue;
+            }
+            let display = cfg.unit === 'B/s' ? formatBytes(val) : formatNumber(val);
+            valEl.innerHTML = display + (cfg.unit && cfg.unit !== 'B/s' ? ' <span class="unit">' + cfg.unit + '</span>' : '');
+            
+            if (['cpu', 'memory'].includes(key)) {
+                const thresh = cfg.threshold || 80;
+                const pct = val;
+                if (pct > thresh) el.className = 'kpi-card red';
+                else if (pct > thresh * 0.7) el.className = 'kpi-card yellow';
+                else el.className = 'kpi-card green';
+            } else if (key === 'load_avg') {
+                el.className = val > 2 ? 'kpi-card yellow' : 'kpi-card green';
+            } else {
+                el.className = 'kpi-card blue';
+            }
+        }
+    }
+    
+    // ==================== Dismiss Alert (LocalStorage) ====================
+    function dismissAlert(alertId) {
+        const dismissed = JSON.parse(localStorage.getItem('dismissedAlerts') || '[]');
+        if (!dismissed.includes(alertId)) {
+            dismissed.push(alertId);
+            localStorage.setItem('dismissedAlerts', JSON.stringify(dismissed));
+        }
+        const alertEl = document.querySelector(`.alert[data-alert-id="${alertId}"]`);
+        if (alertEl) {
+            alertEl.style.opacity = '0';
+            setTimeout(() => {
+                alertEl.remove();
+                updateAlertCount();
+            }, 300);
+        } else {
+            updateAlertCount();
+        }
+    }
+    
+    function updateAlertCount() {
+        const visibleAlerts = document.querySelectorAll('.alert');
+        const countEl = document.getElementById('alertsCount');
+        const count = visibleAlerts.length;
+        if (count > 0) {
+            countEl.textContent = `(${count})`;
+        } else {
+            countEl.textContent = '';
+            const container = document.getElementById('alertsList');
+            if (!container.querySelector('.no-alerts')) {
+                container.innerHTML = '<div class="no-alerts">✅ Нет активных оповещений</div>';
+            }
+        }
+    }
+    
+    // ==================== Agent Load ====================
     async function loadAgentsAndUpdateStatus() {
         try {
             const response = await fetch('/api/agents');
             const agents = await response.json();
-            
             const select = document.getElementById('agentSelect');
             const currentValue = select.value;
-            
             const currentSelectedId = currentValue ? parseInt(currentValue) : null;
             
             select.innerHTML = '';
-            
             if (agents.length === 0) {
-                select.innerHTML = '<option value="">Нет зарегистрированных агентов</option>';
+                select.innerHTML = '<option value="">Нет агентов</option>';
                 document.getElementById('agentStatus').innerHTML = '<span class="status unknown">● НЕТ АГЕНТОВ</span>';
                 return agents;
             }
@@ -121,10 +339,7 @@
             }
             
             const selectedAgent = agents.find(a => a.id === currentAgentId);
-            if (selectedAgent) {
-                updateStatusDisplay(selectedAgent);
-            }
-            
+            if (selectedAgent) updateStatusDisplay(selectedAgent);
             return agents;
         } catch (error) {
             console.error('Error loading agents:', error);
@@ -138,98 +353,106 @@
             document.getElementById('lastSeen').innerHTML = '';
             return;
         }
-        
         const now = Date.now();
         const lastSeen = agent.last_seen || 0;
         const isOnline = lastSeen > 0 && (now - lastSeen) < 60000;
-        
-        const statusSpan = document.getElementById('agentStatus');
-        statusSpan.innerHTML = isOnline 
-            ? '<span class="status online">● ONLINE</span>' 
+        document.getElementById('agentStatus').innerHTML = isOnline
+            ? '<span class="status online">● ONLINE</span>'
             : '<span class="status offline">● OFFLINE</span>';
-        
-        if (lastSeen > 0) {
-            document.getElementById('lastSeen').innerHTML = `последний раз: ${formatDateTime(lastSeen)}`;
-        } else {
-            document.getElementById('lastSeen').innerHTML = 'нет данных';
-        }
+        document.getElementById('lastSeen').innerHTML = lastSeen > 0 ? 'последний раз: ' + formatDateTime(lastSeen) : 'нет данных';
     }
     
-    // Загрузка истории метрик
-    async function loadHistory(metric) {
+    // ==================== Data Loading ====================
+    async function loadHistory(metric, period) {
         if (!currentAgentId) return { timestamps: [], values: [] };
-        
         try {
-            const response = await fetch('/api/metrics/history');
+            const url = `/api/metrics/history?period=${period / 3600000}&agent_id=${currentAgentId}`;
+            const response = await fetch(url);
             const allData = await response.json();
             
-            const timestamps = [];
-            const values = [];
-            
+            const data = [];
             for (const item of allData) {
                 if (item.metrics && item.metrics[metric] !== undefined) {
-                    timestamps.push(formatDateTime(item.timestamp));
-                    values.push(item.metrics[metric]);
+                    data.push({
+                        timestamp: item.timestamp,
+                        value: item.metrics[metric]
+                    });
                 }
             }
             
-            return { timestamps, values };
+            const intervalMs = getAggregationInterval(period);
+            const aggregated = aggregateData(data, intervalMs);
+            
+            return { timestamps: aggregated.timestamps, values: aggregated.values };
         } catch (error) {
             console.error('Error loading history:', error);
             return { timestamps: [], values: [] };
         }
     }
     
-    // Загрузка оповещений
     async function loadAlerts() {
         try {
             const response = await fetch('/api/alerts');
             const alerts = await response.json();
-            
             const container = document.getElementById('alertsList');
-            if (!alerts.length) {
-                container.innerHTML = '<div style="color: #666; padding: 10px;">✅ Нет активных оповещений</div>';
+            const countEl = document.getElementById('alertsCount');
+            
+            const dismissed = JSON.parse(localStorage.getItem('dismissedAlerts') || '[]');
+            const visibleAlerts = alerts.filter(a => !dismissed.includes(a.id));
+            
+            if (!visibleAlerts.length) {
+                container.innerHTML = '<div class="no-alerts">✅ Нет активных оповещений</div>';
+                countEl.textContent = '';
                 return;
             }
             
+            countEl.textContent = `(${visibleAlerts.length})`;
             let html = '';
-            for (const alert of alerts) {
+            for (const alert of visibleAlerts) {
                 html += `
-                    <div class="alert">
-                        <strong>⚠️ ${alert.metric_name}</strong><br>
-                        Значение: ${alert.actual_value} (порог: ${alert.threshold})<br>
-                        ${alert.message}<br>
-                        <small>${new Date(alert.triggered_at).toLocaleString()}</small>
+                    <div class="alert" data-alert-id="${alert.id}">
+                        <div class="alert-message">
+                            <strong>⚠️ ${alert.metric_name}</strong>
+                            <span class="alert-badge">${alert.actual_value}%</span>
+                            <span style="font-size:13px;color:#555;">${alert.message}</span>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                            <span class="alert-time">${new Date(alert.triggered_at).toLocaleString()}</span>
+                            <button class="alert-dismiss-btn" data-id="${alert.id}">✕ Скрыть</button>
+                        </div>
                     </div>
                 `;
             }
             container.innerHTML = html;
+            
+            document.querySelectorAll('.alert-dismiss-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const alertId = parseInt(this.dataset.id);
+                    dismissAlert(alertId);
+                });
+            });
+            
         } catch (error) {
             console.error('Error loading alerts:', error);
+            document.getElementById('alertsList').innerHTML = '<div class="loading">Ошибка загрузки</div>';
         }
     }
     
-    // Загрузка сохранённых прогнозов
+    // ==================== Forecast ====================
     async function loadStoredForecast(agentId, metric) {
         try {
             const response = await fetch(`/api/forecast/stored/${agentId}/${metric}`);
             if (!response.ok) return { timestamps: [], values: [] };
             const data = await response.json();
-            
-            // Фильтруем прогнозы, которые НЕ старше последней метрики
-            // (оставляем только те, что в будущем)
             const now = Date.now();
             const filteredTimestamps = [];
             const filteredValues = [];
-            
             for (let i = 0; i < (data.timestamps || []).length; i++) {
-                // Если время прогноза больше текущего времени + 5 минут (запас)
                 if (data.timestamps[i] > now + 5 * 60 * 1000) {
                     filteredTimestamps.push(formatDateTime(data.timestamps[i]));
                     filteredValues.push(data.values[i]);
                 }
             }
-            
             return { timestamps: filteredTimestamps, values: filteredValues };
         } catch (error) {
             console.error('Error loading stored forecast:', error);
@@ -237,51 +460,38 @@
         }
     }
     
-    // Основная функция обновления дашборда
+    // ==================== Chart with Forecast ====================
     async function updateDashboard() {
-        // Проверяем, есть ли сессия
         try {
             const testResponse = await fetch('/api/agents');
-            if (testResponse.status === 401) {
-                window.location.href = '/login.html';
-                return;
-            }
-        } catch (e) {
-            window.location.href = '/login.html';
-            return;
-        }
-
-        const agents = await loadAgentsAndUpdateStatus();
+            if (testResponse.status === 401) { window.location.href = '/login.html'; return; }
+        } catch (e) { window.location.href = '/login.html'; return; }
         
+        const agents = await loadAgentsAndUpdateStatus();
         const agentId = parseInt(document.getElementById('agentSelect').value);
         const metric = document.getElementById('metricSelect').value;
         currentMetric = metric;
         currentAgentId = agentId;
-        
         if (!agentId) return;
         
-        // Загружаем историю и прогноз
-        const { timestamps, values } = await loadHistory(metric);
+        try {
+            const latestRes = await fetch(`/api/metrics/latest?agent_id=${agentId}`);
+            const latest = await latestRes.json();
+            if (latest.metrics) updateKPI(latest.metrics);
+        } catch (e) {}
+        
+        const { timestamps, values } = await loadHistory(metric, currentPeriod);
         const forecast = await loadStoredForecast(agentId, metric);
         
         if (chart) chart.destroy();
-        
         const ctx = document.getElementById('metricsChart').getContext('2d');
         
-        // Подготовка данных для графика с соединением
-        // Используем время из истории для соединения
         const allLabels = [...timestamps];
-
-        // Если есть прогноз, добавляем его временные метки (начиная со второй)
         if (forecast.timestamps.length > 0) {
-            // Добавляем все метки прогноза, кроме первой (она дублирует последнюю историческую)
             allLabels.push(...forecast.timestamps.slice(1));
         }
-
-        // История: все точки + null для прогноза
+        
         const historyData = [...values, ...Array(forecast.values.length).fill(null)];
-
-        // Прогноз: null для истории (кроме последней точки), затем прогноз
         const forecastData = [
             ...Array(Math.max(0, values.length - 1)).fill(null),
             values.length > 0 ? values[values.length - 1] : null,
@@ -300,8 +510,8 @@
                         backgroundColor: 'rgba(0,0,0,0)',
                         borderWidth: 2,
                         pointRadius: 2,
-                        pointHoverRadius: 5,
-                        tension: 0.1
+                        tension: 0.2,
+                        fill: false
                     },
                     {
                         label: getMetricLabel(metric) + ' (прогноз)',
@@ -311,7 +521,8 @@
                         borderWidth: 2,
                         borderDash: [5, 5],
                         pointRadius: 2,
-                        tension: 0.1
+                        tension: 0.2,
+                        fill: false
                     }
                 ]
             },
@@ -328,70 +539,56 @@
                 }
             }
         });
-        
         await loadAlerts();
     }
     
-    function getMetricLabel(metric) {
-        const labels = {
-            cpu: 'CPU (%)',
-            memory: 'RAM (%)',
-            swap: 'Swap (%)',
-            load_avg: 'Load Average',
-            processes_running: 'Running Processes',
-            network_rx: 'Network RX (B/s)',
-            network_tx: 'Network TX (B/s)'
-        };
-        return labels[metric] || metric;
+    function getMetricLabel(m) {
+        const labels = { cpu: 'CPU (%)', memory: 'RAM (%)', swap: 'Swap (%)', load_avg: 'Load Average',
+                         processes_running: 'Running Processes', network_rx: 'Network RX (B/s)', network_tx: 'Network TX (B/s)' };
+        return labels[m] || m;
+    }
+    function getMetricUnit(m) {
+        const units = { cpu: 'Проценты (%)', memory: 'Проценты (%)', swap: 'Проценты (%)',
+                        load_avg: 'Значение', processes_running: 'Количество', network_rx: 'Байт/сек', network_tx: 'Байт/сек' };
+        return units[m] || '';
+    }
+    function getMetricColor(m) {
+        const colors = { cpu: '#f44336', memory: '#2196f3', swap: '#ff9800', load_avg: '#8b5cf6',
+                         processes_running: '#06b6d4', network_rx: '#22c55e', network_tx: '#f59e0b' };
+        return colors[m] || '#333';
     }
     
-    function getMetricUnit(metric) {
-        const units = {
-            cpu: 'Проценты (%)',
-            memory: 'Проценты (%)',
-            swap: 'Проценты (%)',
-            load_avg: 'Значение',
-            processes_running: 'Количество',
-            network_rx: 'Байт/сек',
-            network_tx: 'Байт/сек'
-        };
-        return units[metric] || '';
+    // ==================== Time Period Buttons ====================
+    function initTimeButtons() {
+        const buttons = document.querySelectorAll('.time-btn');
+        buttons.forEach(btn => {
+            btn.addEventListener('click', function() {
+                buttons.forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+                currentPeriod = parseInt(this.dataset.period);
+                updateDashboard();
+            });
+        });
     }
     
-    function getMetricColor(metric) {
-        const colors = {
-            cpu: '#f44336',
-            memory: '#2196f3',
-            swap: '#ff9800',
-            load_avg: '#9c27b0',
-            processes_running: '#00bcd4',
-            network_rx: '#4caf50',
-            network_tx: '#ff5722'
-        };
-        return colors[metric] || '#333';
-    }
-    
-    // Автообновление каждые 10 секунд
+    // ==================== Init ====================
     let autoRefreshInterval;
     function startAutoRefresh() {
         if (autoRefreshInterval) clearInterval(autoRefreshInterval);
-        autoRefreshInterval = setInterval(() => {
-            console.log('Auto-refresh at', new Date().toLocaleTimeString());
-            updateDashboard();
-        }, 10000);
+        autoRefreshInterval = setInterval(updateDashboard, 10000);
     }
     
-    // Инициализация
     async function init() {
         await updateDashboard();
         startAutoRefresh();
+        initTimeButtons();
         
         document.getElementById('agentSelect').addEventListener('change', () => {
             currentAgentId = parseInt(document.getElementById('agentSelect').value);
             updateDashboard();
         });
-        document.getElementById('metricSelect').addEventListener('change', () => updateDashboard());
-        document.getElementById('refreshBtn').addEventListener('click', () => updateDashboard());
+        document.getElementById('metricSelect').addEventListener('change', updateDashboard);
+        document.getElementById('refreshBtn').addEventListener('click', updateDashboard);
     }
     
     init();
